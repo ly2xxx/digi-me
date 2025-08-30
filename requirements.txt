@@ -1,0 +1,62 @@
+# Digi-Me Digital Clone Framework - Requirements
+# =============================================
+
+# Core Dependencies
+asyncio-mqtt==0.13.0
+aiohttp==3.8.6
+pyyaml==6.0.1
+python-dateutil==2.8.2
+
+# Web Automation
+selenium==4.15.2
+webdriver-manager==4.0.1
+playwright==1.40.0  # Alternative to Selenium
+
+# AI/ML Dependencies
+ollama==0.1.7  # Official Ollama Python client
+httpx==0.25.0  # HTTP client for API calls
+
+# Data Processing
+pandas==2.1.3
+numpy==1.24.4
+
+# Logging and Configuration
+loguru==0.7.2
+python-dotenv==1.0.0
+toml==0.10.2
+
+# Development Dependencies (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-mock==3.12.0
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
+
+# Optional: Voice Processing (future enhancement)
+# speechrecognition==3.10.0
+# pyttsx3==2.90
+
+# Optional: Additional Platform Support (future)
+# requests-oauthlib==1.3.1  # For OAuth integrations
+# python-telegram-bot==20.7  # Telegram support
+# slack-sdk==3.23.0  # Slack support
+
+# Optional: Database Support (future)
+# sqlalchemy==2.0.23
+# sqlite3  # Built into Python
+# redis==5.0.1
+
+# System Dependencies Notes:
+# =========================
+# For WhatsApp Web automation, you'll also need:
+# - Chrome/Chromium browser installed
+# - ChromeDriver (handled automatically by webdriver-manager)
+#
+# For Ollama integration:
+# - Ollama server running locally (https://ollama.ai)
+# - At least one language model pulled (e.g., ollama pull llama3.1)
+#
+# For voice features (future):
+# - System audio drivers and microphone access
+# - Platform-specific TTS engines
