@@ -1,0 +1,68 @@
+# Digi-Me Digital Clone Configuration
+# ==================================
+# This file configures your digital clone behavior and integrations
+
+# Personality Configuration
+personality:
+  # Core personality traits (0.0 to 1.0)
+  formality_level: 0.5      # 0.0 = very casual, 1.0 = very formal
+  response_length: "medium" # short, medium, long
+  emoji_usage: 0.3          # 0.0 = never, 1.0 = frequently
+  humor_level: 0.4          # 0.0 = serious, 1.0 = very humorous
+  technical_depth: 0.6      # 0.0 = simple language, 1.0 = technical
+  response_probability: 0.8 # 0.0 = never respond, 1.0 = always respond
+
+# Platform Integrations
+platforms:
+  whatsapp:
+    enabled: true
+    headless: false                    # Set to true to run browser in background
+    chrome_profile_path: "./chrome_profile"  # Persistent browser profile
+    response_delay: [2, 5]            # Random delay range in seconds
+    scan_interval: 3                  # Seconds between message checks
+    auto_mark_read: true              # Automatically mark messages as read
+
+# LLM Configuration
+llm:
+  provider: "ollama"
+  ollama:
+    base_url: "http://localhost:11434"  # Ollama server URL
+    model: "llama3.1"                   # Model to use (ensure it's pulled)
+    timeout: 60                         # Request timeout in seconds
+    max_tokens: 500                     # Maximum response length
+    temperature: 0.7                    # Creativity level (0.0-1.0)
+    top_p: 0.9                         # Token selection randomness
+    repeat_penalty: 1.1                 # Penalty for repetition
+
+# Plugin Configuration
+plugins:
+  enabled_plugins: []  # List of enabled plugin names
+
+# Logging Configuration
+logging:
+  level: "INFO"              # DEBUG, INFO, WARNING, ERROR
+  file: "digi-me.log"        # Log file path (optional)
+  max_size: 10485760         # Max log file size (10MB)
+  backup_count: 5            # Number of backup log files
+
+# Behavioral Settings
+ignore_senders: []           # List of phone numbers or names to ignore
+response_triggers:           # Words that increase response probability
+  - "help"
+  - "question"
+  - "urgent"
+  - "please"
+
+# Context Management
+context:
+  max_messages_per_conversation: 100  # Max messages to remember per contact
+  context_window_days: 30             # Days to keep conversation history
+
+# Example Relationship Profiles (optional)
+# You can define specific behaviors for different contacts
+# relationships:
+#   "+1234567890":  # Phone number or contact identifier
+#     type: "professional"           # family, friend, colleague, professional
+#     closeness_level: 0.3          # 0.0 = distant, 1.0 = very close
+#     formality_override: 0.8       # Override formality for this contact
+#     notes: "Important client"     # Personal notes
