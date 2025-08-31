@@ -8,15 +8,20 @@ and response automation.
 
 import asyncio
 import logging
+import os
+import random
+import shutil
 import time
+import uuid
 from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime
+from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 
 from ..platforms.base import PlatformBase
 
@@ -39,7 +44,8 @@ class WhatsAppPlatform(PlatformBase):
         super().__init__("whatsapp", config)
         
         # Configuration
-        self.chrome_profile_path = config.get('chrome_profile_path', './chrome_profile')
+        self.base_chrome_profile_path = config.get('chrome_profile_path', './chrome_profile')
+        self.chrome_profile_path = None  # Will be set to unique path during setup
         self.headless = config.get('headless', False)
         self.response_delay = config.get('response_delay', (2, 5))  # Random delay range
         self.scan_interval = config.get('scan_interval', 3)  # Seconds between message checks
@@ -119,6 +125,9 @@ class WhatsAppPlatform(PlatformBase):
             finally:
                 self.driver = None
         
+        # Clean up profile directory
+        await self._cleanup_profile_directory()
+        
         logger.info("WhatsApp Platform stopped")
     
     async def send_message(self, recipient: str, message: str) -> bool:
@@ -171,32 +180,61 @@ class WhatsAppPlatform(PlatformBase):
     
     async def _setup_browser(self):
         """Setup Chrome browser with appropriate options."""
-        chrome_options = Options()
+        max_retries = 3
+        retry_count = 0
         
-        # Use persistent profile to avoid repeated logins
-        chrome_options.add_argument(f"--user-data-dir={self.chrome_profile_path}")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        
-        if self.headless:
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-        
-        # Additional options for stability
-        chrome_options.add_argument("--disable-notifications")
-        chrome_options.add_argument("--disable-popup-blocking")
-        chrome_options.add_argument("--disable-web-security")
-        
-        try:
-            self.driver = webdriver.Chrome(options=chrome_options)
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            self.wait = WebDriverWait(self.driver, 30)
-            logger.info("Browser setup completed")
-        except Exception as e:
-            logger.error(f"Failed to setup browser: {e}")
-            raise
+        while retry_count < max_retries:
+            try:
+                # Generate unique profile directory
+                self._create_unique_profile_path()
+                
+                chrome_options = Options()
+                
+                # Use unique profile to avoid conflicts
+                chrome_options.add_argument(f"--user-data-dir={self.chrome_profile_path}")
+                chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+                chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+                chrome_options.add_experimental_option('useAutomationExtension', False)
+                
+                if self.headless:
+                    chrome_options.add_argument("--headless")
+                    chrome_options.add_argument("--no-sandbox")
+                    chrome_options.add_argument("--disable-dev-shm-usage")
+                
+                # Additional options for stability and conflict avoidance
+                chrome_options.add_argument("--disable-notifications")
+                chrome_options.add_argument("--disable-popup-blocking")
+                chrome_options.add_argument("--disable-web-security")
+                chrome_options.add_argument("--disable-extensions")
+                chrome_options.add_argument("--disable-plugins")
+                chrome_options.add_argument("--disable-background-timer-throttling")
+                chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+                chrome_options.add_argument("--disable-renderer-backgrounding")
+                
+                # Force new session
+                chrome_options.add_argument("--no-first-run")
+                chrome_options.add_argument("--no-default-browser-check")
+                
+                self.driver = webdriver.Chrome(options=chrome_options)
+                self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                self.wait = WebDriverWait(self.driver, 30)
+                logger.info(f"Browser setup completed with profile: {self.chrome_profile_path}")
+                return
+                
+            except WebDriverException as e:
+                retry_count += 1
+                logger.warning(f"Browser setup attempt {retry_count} failed: {e}")
+                
+                if retry_count < max_retries:
+                    # Clean up failed attempt
+                    await self._cleanup_failed_browser_setup()
+                    await asyncio.sleep(2)
+                else:
+                    logger.error(f"Failed to setup browser after {max_retries} attempts: {e}")
+                    raise
+            except Exception as e:
+                logger.error(f"Unexpected error during browser setup: {e}")
+                raise
     
     async def _wait_for_login(self):
         """Wait for user to scan QR code and login."""
@@ -450,6 +488,103 @@ class WhatsAppPlatform(PlatformBase):
         except Exception as e:
             logger.warning(f"Could not mark chat as read: {e}")
     
+    def _create_unique_profile_path(self):
+        """Create a unique Chrome profile directory path."""
+        try:
+            # Create base directory if it doesn't exist
+            base_path = Path(self.base_chrome_profile_path)
+            base_path.mkdir(parents=True, exist_ok=True)
+            
+            # Generate unique profile directory
+            unique_id = f"{int(time.time())}_{str(uuid.uuid4())[:8]}"
+            self.chrome_profile_path = str(base_path / f"session_{unique_id}")
+            
+            # If base profile exists, copy it to preserve login data
+            if (base_path / "Default").exists():
+                logger.info("Copying existing Chrome profile data...")
+                shutil.copytree(str(base_path), self.chrome_profile_path, dirs_exist_ok=True)
+            else:
+                # Create the directory
+                Path(self.chrome_profile_path).mkdir(parents=True, exist_ok=True)
+                
+            logger.info(f"Using Chrome profile: {self.chrome_profile_path}")
+            
+        except Exception as e:
+            logger.warning(f"Could not create unique profile path: {e}, using default")
+            self.chrome_profile_path = str(Path(self.base_chrome_profile_path) / "default")
+    
+    async def _cleanup_failed_browser_setup(self):
+        """Clean up after a failed browser setup attempt."""
+        try:
+            if self.driver:
+                self.driver.quit()
+                self.driver = None
+                
+            # Remove the failed profile directory
+            if self.chrome_profile_path and Path(self.chrome_profile_path).exists():
+                shutil.rmtree(self.chrome_profile_path, ignore_errors=True)
+                logger.info(f"Cleaned up failed profile: {self.chrome_profile_path}")
+                
+        except Exception as e:
+            logger.warning(f"Error during cleanup of failed browser setup: {e}")
+    
+    async def _cleanup_profile_directory(self):
+        """Clean up the Chrome profile directory."""
+        try:
+            if not self.chrome_profile_path or self.chrome_profile_path == self.base_chrome_profile_path:
+                return
+                
+            profile_path = Path(self.chrome_profile_path)
+            if profile_path.exists() and "session_" in str(profile_path):
+                # Save user data back to base profile if needed
+                await self._save_profile_data()
+                
+                # Remove temporary session directory
+                shutil.rmtree(str(profile_path), ignore_errors=True)
+                logger.info(f"Cleaned up Chrome profile: {self.chrome_profile_path}")
+                
+        except Exception as e:
+            logger.warning(f"Error cleaning up profile directory: {e}")
+    
+    async def _save_profile_data(self):
+        """Save important profile data back to base profile."""
+        try:
+            if not self.chrome_profile_path:
+                return
+                
+            source_path = Path(self.chrome_profile_path)
+            base_path = Path(self.base_chrome_profile_path)
+            
+            # Files to preserve for future sessions
+            important_files = [
+                "Default/Local Storage",
+                "Default/Session Storage", 
+                "Default/IndexedDB",
+                "Default/Cookies",
+                "Default/Login Data",
+                "Default/Preferences"
+            ]
+            
+            base_path.mkdir(parents=True, exist_ok=True)
+            
+            for file_path in important_files:
+                source = source_path / file_path
+                target = base_path / file_path
+                
+                if source.exists():
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    if source.is_dir():
+                        if target.exists():
+                            shutil.rmtree(str(target))
+                        shutil.copytree(str(source), str(target))
+                    else:
+                        shutil.copy2(str(source), str(target))
+                        
+            logger.info("Saved Chrome profile data for future sessions")
+            
+        except Exception as e:
+            logger.warning(f"Error saving profile data: {e}")
+    
     def get_platform_status(self) -> Dict[str, Any]:
         """Get current platform status."""
         return {
@@ -461,4 +596,3 @@ class WhatsAppPlatform(PlatformBase):
         }
 
 
-import random  # Add this import at the top
